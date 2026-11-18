@@ -1,0 +1,103 @@
+name: release
+
+# a release of flop: a tag v<version> on this source. Build it for macOS and
+# Linux (arm64, amd64) with the version stamped in, attest that the archives
+# were built here from the tag, publish
+# https://dl.flowercomputer.com/flop/v<version>/flop_<version>_<os>_<arch>.tar.gz
+# and checksums.txt, install it from there with install.sh, then publish
+# install.sh and point flop/latest at the version. People install with
+# `curl -fsSL https://flowercomputer.com/install.sh | sh` (a redirect to
+# dl.flowercomputer.com/flop/install.sh).
+#
+# Through the GitHub environment "production" (tags v* only), which holds the
+# bucket and the role that may write flop's files to it.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+  id-token: write # sign in to AWS with OIDC (no stored keys), and sign the attestation
+  attestations: write
+  artifact-metadata: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: us-east-2
+  DOWNLOADS_BUCKET: ${{ secrets.DOWNLOADS_BUCKET }}
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: the version
+        run: |
+          v=${GITHUB_REF_NAME#v}
+          [[ "$v" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || { echo "not a version: $GITHUB_REF_NAME (e.g. v0.1.0)"; exit 1; }
+          echo "VERSION=$v" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26" # the newest 1.26
+
+      - name: test
+        run: |
+          go vet ./...
+          go test ./...
+
+      # static builds (no cgo), each with its version: `flop version` says it
+      - name: build
+        run: |
+          dist="$RUNNER_TEMP/dist"
+          mkdir -p "$dist"
+          for os in darwin linux; do
+            for arch in arm64 amd64; do
+              out="$RUNNER_TEMP/build/${os}_${arch}"
+              mkdir -p "$out"
+              CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build -trimpath \
+                -ldflags "-s -w -X main.appVersion=$VERSION" -o "$out/flop" .
+              tar -czf "$dist/flop_${VERSION}_${os}_${arch}.tar.gz" -C "$out" flop
+            done
+          done
+          (cd "$dist" && sha256sum flop_*.tar.gz > checksums.txt && cat checksums.txt)
+          v=$("$RUNNER_TEMP/build/linux_amd64/flop" version)
+          echo "$v"
+          grep -q "^flop $VERSION " <<<"$v"
+
+      # each archive's provenance: this repository, this workflow, this tag.
+      # `gh attestation verify <archive> --repo flowercomputers/flop` checks it
+      - uses: actions/attest@v4
+        with:
+          subject-checksums: ${{ runner.temp }}/dist/checksums.txt
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.RELEASE_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # a version's files never change: cached for a year
+      - name: upload
+        run: |
+          aws s3 cp --only-show-errors --recursive "$RUNNER_TEMP/dist/" "s3://$DOWNLOADS_BUCKET/flop/v$VERSION/" \
+            --cache-control "public, max-age=31536000, immutable"
+
+      # through the CDN, as a user would, with the install.sh being released
+      - name: install it from dl.flowercomputer.com
+        run: |
+          FLOP_VERSION="$VERSION" FLOP_INSTALL_DIR="$RUNNER_TEMP/installed" sh install.sh
+          "$RUNNER_TEMP/installed/flop" version | grep -q "^flop $VERSION "
+
+      # what a new install gets: cached for a minute
+      - name: publish
+        run: |
+          aws s3 cp --only-show-errors install.sh "s3://$DOWNLOADS_BUCKET/flop/install.sh" \
+            --content-type "text/plain; charset=utf-8" --cache-control "public, max-age=60"
+          echo "$VERSION" | aws s3 cp --only-show-errors - "s3://$DOWNLOADS_BUCKET/flop/latest" \
+            --content-type "text/plain; charset=utf-8" --cache-control "public, max-age=60"
+          echo "released flop $VERSION: curl -fsSL https://flowercomputer.com/install.sh | sh"
