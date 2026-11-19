@@ -272,18 +272,22 @@ func TestADeployBuildsForTheBogsTier(t *testing.T) {
 	t.Cleanup(srv.Close)
 	client := NewClient(Config{URLs: URLConfig{APIBaseURL: srv.URL}, LocalConfig: LocalConfig{APIKey: "t", OrganizationID: "flower"}})
 	for _, c := range []struct {
-		name, cpu, want string
+		name, cpu string
+		memory    int
+		want      string
 	}{
-		{"try", "", api.ArchAMD64},         // in the sandbox: its rollout runs there
-		{"try", "standard", api.ArchAMD64}, // still: the move after it builds for EC2
-		{"big", "shared", api.ArchARM64},   // on EC2, the same
-		{"new", "shared", api.ArchAMD64},   // a new one, at a shared size
-		{"new", "standard", api.ArchARM64},
-		{"new", "", api.ArchAMD64}, // no size: spade's default, the sandbox's
+		{"try", "", 0, api.ArchAMD64},         // in the sandbox: its rollout runs there
+		{"try", "standard", 0, api.ArchAMD64}, // still: the move after it builds for EC2
+		{"big", "shared", 0, api.ArchARM64},   // on EC2, the same
+		{"new", "shared", 0, api.ArchAMD64},   // a new one, at a shared size
+		{"new", "standard", 0, api.ArchARM64},
+		{"new", "", 0, api.ArchAMD64},  // no size: spade's default, the sandbox's
+		{"new", "", 2, api.ArchAMD64},  // a memory the sandbox has
+		{"new", "", 16, api.ArchARM64}, // more than it has: a box of its own
 	} {
-		got, err := archFor(context.Background(), client, deployOptions{Name: c.name, Size: sizing{CPU: c.cpu}})
+		got, err := archFor(context.Background(), client, deployOptions{Name: c.name, Size: sizing{CPU: c.cpu, MemoryGB: c.memory}})
 		if err != nil || got != c.want {
-			t.Errorf("%s at %q: %s %v, want %s", c.name, c.cpu, got, err, c.want)
+			t.Errorf("%s at %d GB %q: %s %v, want %s", c.name, c.memory, c.cpu, got, err, c.want)
 		}
 	}
 	sandboxDefault = false // a spade without the sandbox

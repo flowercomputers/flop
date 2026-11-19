@@ -16,7 +16,7 @@ type BogVolume struct {
 	RestoredFrom string `json:"restored_from,omitempty"`
 	SizeGB       int    `json:"size_gb"`
 	AttachedTo   string `json:"attached_to,omitempty"` // instance id, empty when detached
-	State        string `json:"state"`                 // EC2's volume state, as last observed
+	State        string `json:"state"`                 // EC2's volume state, as last observed; "fly": a sandbox bog's data
 	// Initialized: a box has mounted it at least once, so it holds a
 	// filesystem. Until then it is fresh and may be formatted.
 	Initialized bool      `json:"initialized"`
@@ -35,6 +35,23 @@ type BogVolume struct {
 
 type ListBogDataResponse struct {
 	Volumes []BogVolume `json:"volumes"`
+}
+
+// BogCopy is a copy of a sandbox bog's data in S3, taken nightly while it
+// runs. Its ID restores it: POST /api/v1/bogs/{name}/data/restore with
+// snapshot_id set to it.
+type BogCopy struct {
+	ID        string     `json:"id"`
+	State     string     `json:"state"` // snapshotting, copying, done or failed
+	TakenAt   time.Time  `json:"taken_at"`
+	DoneAt    *time.Time `json:"done_at,omitempty"`
+	SizeBytes int64      `json:"size_bytes,omitempty"`
+	Error     string     `json:"error,omitempty"`
+}
+
+// GET /api/v1/bogs/{name}/data/copies: a sandbox bog's copies, newest first
+type BogCopiesResponse struct {
+	Copies []BogCopy `json:"copies"`
 }
 
 // PATCH /api/v1/bogs/{name}/data: grow the bog's data to SizeGB, online

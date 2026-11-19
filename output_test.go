@@ -49,6 +49,7 @@ func TestErrorsAreClassified(t *testing.T) {
 		{&APIError{Status: http.StatusPaymentRequired}, "payment_required", 9},
 		{&APIError{Status: http.StatusBadRequest}, "invalid", 2},
 		{&APIError{Status: http.StatusBadGateway}, "unavailable", 8},
+		{&APIError{Status: http.StatusTooManyRequests, Body: "too many requests: try again in 30 seconds"}, "unavailable", 8},
 		{errNotLoggedIn, "not_logged_in", 3},
 		{fail("timeout", "gave up", ""), "timeout", 6},
 		{errors.New(`Required flag "image" not set`), "usage", 2},

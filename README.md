@@ -30,4 +30,5 @@ Every command answers in JSON with `--json`. `flop docs` prints the guide for sc
 
 flop is developed in Flower Computer's own repository and published here with each release. Issues and PRs are welcome here but will be implemented in our monorepo, then released here.
 
-Releases after 0.3.0 are built here, from the tag `v<version>`, by the [release workflow](.github/workflows/release.yml). `gh attestation verify flop_<version>_<os>_<arch>.tar.gz --repo flowercomputers/flop` checks that an archive was built by it.
+Use this to verify a build was built through this repo: 
+`gh attestation verify flop_<version>_<os>_<arch>.tar.gz --repo flowercomputers/flop`

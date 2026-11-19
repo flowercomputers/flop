@@ -69,7 +69,7 @@ func (l deploymentList) human(w io.Writer) {
 	fmt.Fprintln(tw, "ID\tBOG\tBOX\tIMAGE\tGEN\tSTATE\tHEALTH\tVERSION\tUPDATED\tURL")
 	for _, d := range l.Deployments {
 		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
-			shortID(d.ID), d.Bog, orDash(d.PeaterID), imageTag(d.ImageRef),
+			shortID(d.ID), d.Bog, box(d), imageTag(d.ImageRef),
 			deploymentGen(d), deploymentState(d), deploymentHealth(d), orDash(d.BoxVersion), ago(d.UpdatedAt), orDash(d.URL))
 	}
 	tw.Flush()

@@ -86,6 +86,9 @@ func classify(err error) *cliError {
 			e.Hint = "add credits or a card to the organization in the panel (Billing)"
 		case s == http.StatusNotImplemented:
 			e.Code = "invalid" // this spade does not do that (a feature turned off)
+		case s == http.StatusTooManyRequests:
+			e.Code = "unavailable" // spade's limit on one caller's requests
+			e.Hint = "wait as long as it says, then try again"
 		case s >= 500:
 			e.Code = "unavailable"
 			e.Hint = "spade did not manage it; try again in a minute"

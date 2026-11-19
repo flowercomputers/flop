@@ -67,7 +67,7 @@ func newApp() *cli.Command {
 							&cli.BoolFlag{Name: "no-wait", Usage: "return once the deployment is updated, without waiting for the box (then: flop bog wait)"},
 							&cli.DurationFlag{Name: "timeout", Value: 10 * time.Minute, Usage: "how long to wait for the box to run the new image (a new box takes a few minutes)"},
 							&cli.IntFlag{Name: "memory", Usage: "the machine's memory in GB (`flop sizes`); a deployed bog at another size moves to it after the rollout"},
-							&cli.StringFlag{Name: "cpu", Usage: "shared (the sandbox: sleeps when idle, billed awake only; the default where it runs), standard, or more (twice the vCPUs): a box of its own"},
+							&cli.StringFlag{Name: "cpu", Usage: "shared (the sandbox: sleeps when idle, billed awake only; the default where it runs, up to its memory), standard, or more (twice the vCPUs): a box of its own"},
 							&cli.IntFlag{Name: "data", Usage: "its data in GB: a new bog's size, or more than it has to grow it (it only grows)"},
 						),
 						Action: command(func(ctx context.Context, cmd *cli.Command, o *ui) (result, error) {
@@ -163,7 +163,7 @@ func newApp() *cli.Command {
 						ArgsUsage: "<bog>",
 						Metadata:  changes("flop bog resize search-server --memory 16 --cpu more"),
 						Flags: []cli.Flag{
-							&cli.IntFlag{Name: "memory", Usage: "memory in GB (2, 4, 8, 16, 32, 64, 128; default: as it is)"},
+							&cli.IntFlag{Name: "memory", Usage: "memory in GB (`flop sizes` lists what each CPU offers; default: as it is)"},
 							&cli.StringFlag{Name: "cpu", Usage: "standard, more (twice the vCPUs), or shared (the sandbox: it moves there with its data); default: as it is"},
 							&cli.BoolFlag{Name: "no-wait", Usage: "return once spade has the request, without waiting for the move"},
 							&cli.DurationFlag{Name: "timeout", Value: 15 * time.Minute, Usage: "how long to wait for the move"},
@@ -174,11 +174,11 @@ func newApp() *cli.Command {
 					},
 					{
 						Name:      "grow",
-						Usage:     "grow a bog's data, while it runs (it only grows, at most once in 6 hours)",
+						Usage:     "grow a bog's data, while it runs (it only grows; on a box of its own, at most once in 6 hours)",
 						ArgsUsage: "<bog>",
 						Metadata:  changes("flop bog grow search-server --data 30"),
 						Flags: []cli.Flag{
-							&cli.IntFlag{Name: "data", Usage: "the new size in GB (larger than now, at most 1000)", Required: true},
+							&cli.IntFlag{Name: "data", Usage: "the new size in GB (larger than now; at most 1000, or 10 in the sandbox)", Required: true},
 							&cli.BoolFlag{Name: "no-wait", Usage: "return once spade has the request, without waiting for the filesystem"},
 							&cli.DurationFlag{Name: "timeout", Value: 10 * time.Minute, Usage: "how long to wait for the filesystem to grow"},
 						},
@@ -329,12 +329,21 @@ func newApp() *cli.Command {
 						}),
 					},
 					{
+						Name:      "copies",
+						Usage:     "list a sandbox bog's copies of its data (one a day, the last 7 kept), which `flop bog restore` starts it from",
+						ArgsUsage: "<bog>",
+						Metadata:  reads("flop bog copies search-server --json"),
+						Action: command(func(ctx context.Context, cmd *cli.Command, o *ui) (result, error) {
+							return of(Copies(ctx, cmd.Args().First()))
+						}),
+					},
+					{
 						Name:      "restore",
-						Usage:     "start a bog from one of its snapshots at its next deploy (its current volume is kept)",
+						Usage:     "start an undeployed bog from one of its snapshots at its next deploy (its current volume is kept)",
 						ArgsUsage: "<bog>",
 						Metadata:  changes("flop bog restore search-server --snapshot snap-0123456789abcdef0"),
 						Flags: []cli.Flag{
-							&cli.StringFlag{Name: "snapshot", Usage: "snapshot id (snap-...)", Required: true},
+							&cli.StringFlag{Name: "snapshot", Usage: "snapshot id (snap-...); for a sandbox bog, the id of one of its copies (`flop bog copies`)", Required: true},
 						},
 						Action: command(func(ctx context.Context, cmd *cli.Command, o *ui) (result, error) {
 							return of(Restore(ctx, cmd.Args().First(), cmd.String("snapshot")))

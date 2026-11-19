@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -212,8 +213,22 @@ func Curl(ctx context.Context, o *ui, bog, path, method, data string) (curled, e
 	return c, err
 }
 
+// how long curl keeps asking while the routers don't have its key yet
+var curlKeyWait, curlKeyPoll = 15 * time.Second, 300 * time.Millisecond
+
+// routerRefusedKey: a router's own refusal of a key, which names itself so
+func routerRefusedKey(resp *http.Response) bool {
+	return resp.StatusCode == http.StatusUnauthorized && resp.Header.Get("WWW-Authenticate") == `Bearer realm="bog"`
+}
+
 func curlBog(ctx context.Context, client *Client, web *http.Client, bog, path, method, data string) (curled, error) {
 	key, err := client.CreateBogKey(ctx, bog, api.CreateBogKeyRequest{Name: "flop curl", ExpiresIn: "5m"})
+	var apiErr *APIError
+	if errors.As(err, &apiErr) && apiErr.Status == http.StatusTooManyRequests {
+		// every curl makes a key, and spade limits how many one caller makes
+		return curled{}, &cliError{Code: "unavailable", Status: apiErr.Status, Message: "make a temporary key: " + apiErr.Error(),
+			Hint: fmt.Sprintf("each curl makes a key, and spade limits how many are made in an hour: wait, or make one key (`flop bog keys create %s`) and call the bog with it", bog)}
+	}
 	if err != nil {
 		return curled{}, fmt.Errorf("make a temporary key: %w", err)
 	}
@@ -228,17 +243,31 @@ func curlBog(ctx context.Context, client *Client, web *http.Client, bog, path, m
 			method = http.MethodPost
 		}
 	}
-	req, err := http.NewRequestWithContext(ctx, strings.ToUpper(method), key.URL+path, bytes.NewReader([]byte(data)))
-	if err != nil {
-		return curled{}, err
-	}
-	req.Header.Set("Authorization", "Bearer "+key.Secret)
-	if data != "" {
-		req.Header.Set("Content-Type", "application/json")
-	}
-	resp, err := web.Do(req)
-	if err != nil {
-		return curled{}, fail("unavailable", fmt.Sprintf("calling %s: %v", bog, err), fmt.Sprintf("see `flop bog status %s`", bog))
+	// the key reaches the routers a second or two after spade makes it; a
+	// router that doesn't have it yet refuses it before the bog sees
+	// anything, so the request is sent again until one does
+	var resp *http.Response
+	for made := time.Now(); ; {
+		req, err := http.NewRequestWithContext(ctx, strings.ToUpper(method), key.URL+path, bytes.NewReader([]byte(data)))
+		if err != nil {
+			return curled{}, err
+		}
+		req.Header.Set("Authorization", "Bearer "+key.Secret)
+		if data != "" {
+			req.Header.Set("Content-Type", "application/json")
+		}
+		if resp, err = web.Do(req); err != nil {
+			return curled{}, fail("unavailable", fmt.Sprintf("calling %s: %v", bog, err), fmt.Sprintf("see `flop bog status %s`", bog))
+		}
+		if !routerRefusedKey(resp) || time.Since(made) > curlKeyWait {
+			break
+		}
+		resp.Body.Close()
+		select {
+		case <-ctx.Done():
+			return curled{}, ctx.Err()
+		case <-time.After(curlKeyPoll):
+		}
 	}
 	defer resp.Body.Close()
 	raw, err := io.ReadAll(resp.Body)

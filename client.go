@@ -352,6 +352,12 @@ func (c *Client) ListBogData(ctx context.Context) ([]api.BogVolume, error) {
 	return out.Volumes, err
 }
 
+func (c *Client) ListBogCopies(ctx context.Context, bog string) ([]api.BogCopy, error) {
+	var out api.BogCopiesResponse
+	err := c.doJSON(ctx, http.MethodGet, "/api/v1/bogs/"+url.PathEscape(bog)+"/data/copies", nil, &out)
+	return out.Copies, err
+}
+
 func (c *Client) RestoreBogData(ctx context.Context, bog, snapshotID string) (api.RestoreBogDataResponse, error) {
 	var out api.RestoreBogDataResponse
 	err := c.doJSON(ctx, http.MethodPost, "/api/v1/bogs/"+url.PathEscape(bog)+"/data/restore",

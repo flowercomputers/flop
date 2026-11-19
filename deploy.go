@@ -129,7 +129,8 @@ func DeployBog(ctx context.Context, o *ui, opts deployOptions) (result, error) {
 // archFor is what a deploy builds for: a deployed bog, its tier's
 // architecture (a size asked for moves it after the rollout); a new one,
 // the sandbox's (amd64, on Fly) at a shared size, EC2's (arm64) at a
-// standard or more one, and with no size, the tier of spade's default size
+// standard or more one, and with no CPU named, as spade places it: the
+// sandbox where that is its default and has the memory asked for, else EC2
 func archFor(ctx context.Context, client *Client, opts deployOptions) (string, error) {
 	name := opts.Name
 	if name == "" {
@@ -162,10 +163,15 @@ func archFor(ctx context.Context, client *Client, opts deployOptions) (string, e
 		if err != nil {
 			return "", fmt.Errorf("sizes: %w", err)
 		}
+		isDefault, hasMemory := false, opts.Size.MemoryGB == 0
 		for _, s := range sizes.Sizes {
-			if s.Default && s.Tier == api.TierSandbox {
-				return api.ArchAMD64, nil
+			if s.Tier == api.TierSandbox {
+				isDefault = isDefault || s.Default
+				hasMemory = hasMemory || s.MemoryGB == opts.Size.MemoryGB
 			}
+		}
+		if isDefault && hasMemory {
+			return api.ArchAMD64, nil
 		}
 	}
 	return api.ArchARM64, nil
@@ -310,7 +316,7 @@ func waitForDeployment(ctx context.Context, client *Client, id string, gen int64
 		}
 
 		status := "waiting for the box to report"
-		unhealthy := false
+		unhealthy, asleep := false, false
 		switch {
 		case d.BoxState == api.BoxLaunching:
 			status = "launching its box"
@@ -325,6 +331,11 @@ func waitForDeployment(ctx context.Context, client *Client, id string, gen int64
 			status = "the box has gone quiet; waiting"
 		case obs.Generation < gen:
 			status = fmt.Sprintf("box is still on generation %d", obs.Generation)
+		case obs.State == api.BogStateAsleep:
+			// a sandbox bog, idle: spade wakes one for a new generation, so
+			// one that stays asleep is waiting for a request
+			status = "asleep (it wakes on its next request)"
+			asleep = true
 		case fresh && obs.Generation == gen && obs.State == api.BogStateRunning && !obs.Healthy:
 			// the peater calls a bog healthy only once GET /healthz on its
 			// port answers 200; an app serving its check elsewhere never is
@@ -342,6 +353,10 @@ func waitForDeployment(ctx context.Context, client *Client, id string, gen int64
 			if unhealthy {
 				return *d, fail("bog_failed", fmt.Sprintf("gave up after %s: generation %d is running but its health check (GET /healthz) never passed", timeout, gen),
 					fmt.Sprintf("a bog must answer 200 at GET /healthz on its port; see `flop bog logs %s`", d.Bog))
+			}
+			if asleep {
+				return *d, fail("timeout", fmt.Sprintf("gave up after %s: %s is asleep at generation %d", timeout, d.Bog, gen),
+					fmt.Sprintf("a sleeping bog wakes on its next request: `flop bog curl %s /healthz`, then wait again", d.Bog))
 			}
 			return *d, fail("timeout", fmt.Sprintf("gave up after %s (last: %s)", timeout, status),
 				fmt.Sprintf("it may still get there: `flop bog wait %s`, or see `flop bog status %s`", d.Bog, d.Bog))

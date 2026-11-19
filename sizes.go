@@ -210,7 +210,7 @@ func move(ctx context.Context, o *ui, client *Client, d api.Deployment, out resi
 			return out, nil
 		case now == out.From:
 			return resized{}, fail("bog_failed", fmt.Sprintf("%s could not move to %s and runs at %s, where it was", d.Bog, out.To, now),
-				fmt.Sprintf("its activity says why (`flop activity`); try again later (`flop bog resize %s`)", d.Bog))
+				fmt.Sprintf("the organization's activity in the panel says why; try again later (`flop bog resize %s`)", d.Bog))
 		}
 	}
 }

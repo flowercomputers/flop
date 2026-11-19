@@ -93,14 +93,17 @@ type CreateDeploymentRequest struct {
 	ImageRef string `json:"image_ref"`
 	PeaterID string `json:"peater_id,omitempty"` // empty: spade launches a box
 	Port     int    `json:"port,omitempty"`      // default 7877
-	// the machine (GET /api/v1/sizes): memory in GB (default 2), CPU
-	// "standard" (default) or "more"
+	// the machine (GET /api/v1/sizes lists them, and marks the default):
+	// memory in GB, and CPU "standard" or "more" (a box of its own, 4 GB
+	// unless named) or "shared" (the sandbox, 2 GB unless named). No CPU
+	// named is the sandbox where spade runs one, unless more memory is
+	// named than the sandbox has: that is standard
 	MemoryGB int    `json:"memory_gb,omitempty"`
 	CPU      string `json:"cpu,omitempty"`
-	// Tier: TierStandard (EC2, the default for now) or TierSandbox (Fly)
+	// Tier: TierStandard (EC2) or TierSandbox (Fly); empty: the CPU's
 	Tier string `json:"tier,omitempty"`
-	// DataGB: the size of the bog's data, when it has none yet (default 10;
-	// it only grows after)
+	// DataGB: the size of the bog's data, when it has none yet (default 10,
+	// or 1 in the sandbox; it only grows after)
 	DataGB int `json:"data_gb,omitempty"`
 }
 
