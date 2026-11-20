@@ -53,6 +53,15 @@ func newApp() *cli.Command {
 		ExitErrHandler: func(context.Context, *cli.Command, error) {},
 		Commands: []*cli.Command{
 			{
+				Name:      "init",
+				Usage:     "start a project: a small working bog in ./<name>, ready to run and to deploy",
+				ArgsUsage: "<name>",
+				Metadata:  changes("flop init notes --json"),
+				Action: command(func(ctx context.Context, cmd *cli.Command, o *ui) (result, error) {
+					return of(Init(ctx, cmd.Args().First()))
+				}),
+			},
+			{
 				Name:  "bog",
 				Usage: "build, deploy and run bogs",
 				Commands: []*cli.Command{

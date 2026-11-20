@@ -119,7 +119,7 @@ func TestEveryCommandNamedExists(t *testing.T) {
 	root := newApp()
 	texts := map[string]string{}
 	files, _ := filepath.Glob("*.go")
-	for _, f := range append(files, "AGENTS.md", "README.md") {
+	for _, f := range append(files, "AGENTS.md", "README.md", "starter/AGENTS.md") {
 		if strings.HasSuffix(f, "_test.go") {
 			continue
 		}

@@ -71,6 +71,9 @@ Without a terminal (or with `--no-input`, or `FLOP_NO_INPUT=1`) flop asks nothin
 ## Common flows
 
 ```
+# start a project: a small working bog in ./<name>, with its own AGENTS.md on how to build on it
+flop init <name> --json                        # .dir, .files, .next; no login needed. Exit 5 inside a git repository, or if ./<name> has anything in it
+
 # deploy the project in the current git repository, and wait until it is healthy
 flop bog deploy --json
 
