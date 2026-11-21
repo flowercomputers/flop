@@ -54,11 +54,15 @@ func newApp() *cli.Command {
 		Commands: []*cli.Command{
 			{
 				Name:      "init",
-				Usage:     "start a project: a small working bog in ./<name>, ready to run and to deploy",
-				ArgsUsage: "<name>",
-				Metadata:  changes("flop init notes --json"),
+				Usage:     "start a project: a small working bog in ./<name>, ready to run and to deploy. At a terminal it asks for what it is not told",
+				ArgsUsage: "[name]",
+				Metadata:  changes("flop init notes --kind web --json"),
+				Flags: []cli.Flag{
+					&cli.StringFlag{Name: "kind", Usage: "what it starts as: api (the default), or web: an API with a page in front of it, whose bog is public"},
+					&cli.StringFlag{Name: "access", Usage: "who may call the bog once deployed: private (every request needs a key; the default) or public (anyone, any method)"},
+				},
 				Action: command(func(ctx context.Context, cmd *cli.Command, o *ui) (result, error) {
-					return of(Init(ctx, cmd.Args().First()))
+					return of(Init(ctx, o, initOptions{Name: cmd.Args().First(), Kind: cmd.String("kind"), Access: cmd.String("access")}))
 				}),
 			},
 			{
@@ -78,9 +82,11 @@ func newApp() *cli.Command {
 							&cli.IntFlag{Name: "memory", Usage: "the machine's memory in GB (`flop sizes`); a deployed bog at another size moves to it after the rollout"},
 							&cli.StringFlag{Name: "cpu", Usage: "shared (the sandbox: sleeps when idle, billed awake only; the default where it runs, up to its memory), standard, or more (twice the vCPUs): a box of its own"},
 							&cli.IntFlag{Name: "data", Usage: "its data in GB: a new bog's size, or more than it has to grow it (it only grows)"},
+							&cli.StringFlag{Name: "access", Usage: "who may call a NEW bog: private (every request needs a key; the default) or public (anyone, any method). A bog that exists keeps its own (flop bog access changes it)"},
 						),
 						Action: command(func(ctx context.Context, cmd *cli.Command, o *ui) (result, error) {
 							return DeployBog(ctx, o, deployOptions{
+								Access:    cmd.String("access"),
 								Package:   cmd.String("package"),
 								Fresh:     cmd.Bool("fresh"),
 								Name:      cmd.String("name"),

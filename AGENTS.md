@@ -72,7 +72,10 @@ Without a terminal (or with `--no-input`, or `FLOP_NO_INPUT=1`) flop asks nothin
 
 ```
 # start a project: a small working bog in ./<name>, with its own AGENTS.md on how to build on it
-flop init <name> --json                        # .dir, .files, .next; no login needed. Exit 5 inside a git repository, or if ./<name> has anything in it
+flop init <name> --json                        # an API, private. .kind, .access, .dir, .files, .next (run those, in order); no login needed
+flop init <name> --kind web --json             # an API with a page in front of it: its bog is public (a browser cannot send a key)
+flop init <name> --access public --json        # an API anyone may call: .next deploys it with --access public
+# at a terminal, without --json, init asks for what it is not told (the name, the kind, the access). Exit 5 inside a git repository, or if ./<name> has anything in it
 
 # deploy the project in the current git repository, and wait until it is healthy
 flop bog deploy --json
@@ -104,6 +107,7 @@ flop bog keys create <bog> --name <who> --json   # .secret is shown once; send i
 
 # who may call it: private (every request needs a key) or public (anyone, any method)
 flop bog access <bog> public --json
+flop bog deploy --access public --json          # a NEW bog, public from its first deploy. A bog that exists keeps its mode: .access is what it has, whatever was asked
 
 # sizes: what a bog's machine and data may be, what each costs, which this organization may choose
 flop sizes --json                               # .sizes[].default, .allowed; .not_allowed says why not

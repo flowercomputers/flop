@@ -44,6 +44,32 @@ type verify struct {
 	ExpiresAt time.Time `json:"expires_at"`
 }
 
+// showVerify tells whoever is watching how to approve a login: a JSON line
+// for an agent, the code as a badge at a terminal, a plain line otherwise.
+// At a terminal it opens the browser too, unless noBrowser; when no browser
+// shows the address it is printed, and above the badge: the spinner redraws
+// the line under the badge, and wipes whatever is printed there. It returns
+// the badge and its spinner's line (-1 with no badge).
+func showVerify(o *ui, start StartResponse, noBrowser bool, open func(url string) error) (string, int) {
+	switch {
+	case o.json:
+		json.NewEncoder(o.err).Encode(verify{Event: "verify", URL: start.VerificationURIComplete, UserCode: start.UserCode, ExpiresAt: start.ExpiresAt})
+	case o.tty && o.canAsk:
+		if noBrowser {
+			o.say("Approve this login at %s", start.VerificationURIComplete)
+		} else if err := open(start.VerificationURIComplete); err != nil {
+			o.say("Could not open a browser; approve the login at: %s", start.VerificationURIComplete)
+		}
+		pending, spinnerLine := renderPendingAuthBadge(start.UserCode, true)
+		fmt.Fprintln(o.err) // set the badge apart from what is above it
+		fmt.Fprintln(o.err, pending)
+		return pending, spinnerLine
+	default:
+		o.say("Approve this login at %s (code %s); waiting...", start.VerificationURIComplete, start.UserCode)
+	}
+	return "", -1
+}
+
 // Login signs in through the panel: a person approves this device there.
 // At a terminal it opens the browser and shows the code as a badge; else (or
 // with noBrowser) it prints where to go, and waits.
@@ -68,23 +94,7 @@ func Login(ctx context.Context, o *ui, noBrowser bool) (loggedIn, error) {
 		return loggedIn{}, fmt.Errorf("start login: %w", err)
 	}
 
-	badge := o.tty && o.canAsk
-	pending, spinnerLine := "", -1
-	switch {
-	case o.json:
-		json.NewEncoder(o.err).Encode(verify{Event: "verify", URL: start.VerificationURIComplete, UserCode: start.UserCode, ExpiresAt: start.ExpiresAt})
-	case badge:
-		pending, spinnerLine = renderPendingAuthBadge(start.UserCode, true)
-		fmt.Fprintln(o.err) // set the badge apart from the command above it
-		fmt.Fprintln(o.err, pending)
-	default:
-		o.say("Approve this login at %s (code %s); waiting...", start.VerificationURIComplete, start.UserCode)
-	}
-	if !noBrowser && badge {
-		if err := browser.OpenURL(start.VerificationURIComplete); err != nil {
-			o.say("Could not open a browser; approve the login at: %s", start.VerificationURIComplete)
-		}
-	}
+	pending, spinnerLine := showVerify(o, start, noBrowser, browser.OpenURL)
 
 	deadline, cancel := context.WithDeadline(ctx, start.ExpiresAt)
 	defer cancel()
@@ -94,12 +104,8 @@ func Login(ctx context.Context, o *ui, noBrowser bool) (loggedIn, error) {
 		tok, pollErr = client.PollForCLIToken(deadline, cfg.LocalConfig.ClientID, start.DeviceCode, time.Duration(start.Interval)*time.Second)
 		return pollErr
 	}
-	if badge {
-		err = runWithLineSpinner(pending, spinnerLine, "Waiting for approval...", poll)
-	} else {
-		err = poll()
-	}
-	if err != nil {
+	// with no badge there is no spinner: this is poll alone
+	if err := runWithLineSpinner(pending, spinnerLine, "Waiting for approval...", poll); err != nil {
 		if errors.Is(err, TokenErrorExpiredToken) || errors.Is(err, context.DeadlineExceeded) {
 			return loggedIn{}, fail("timeout", "the login was not approved in time", "run `flop auth login` again")
 		}

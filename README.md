@@ -16,7 +16,8 @@ A release's files are at `https://dl.flowercomputer.com/flop/v<version>/flop_<ve
 
 ```
 flop auth login        # sign in: you approve this device in the browser
-flop init notes        # start a project: a small working bog in ./notes
+flop init              # start a project: it asks its name, and whether it is an API or a web app
+flop init notes        # the same, in ./notes (--kind and --access answer the rest)
 flop bog deploy        # build the project in the current git repository and run it
 flop --help            # every command
 ```

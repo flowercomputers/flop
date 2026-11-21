@@ -24,6 +24,7 @@ type deployOptions struct {
 	Arch      string // the build's architecture: arm64 ("") or amd64
 	Timeout   time.Duration
 	Size      sizing
+	Access    string // who may call a NEW bog: private or public; "" names none
 }
 
 // sizing is the machine and data a deploy asks for; zero values: what runs
@@ -48,6 +49,11 @@ type deployed struct {
 	// to it, and the grow of its data
 	Resized *resized `json:"resized,omitempty"`
 	Grown   *grown   `json:"grown,omitempty"`
+	// Access: who may call the bog now, when --access named a mode. Only a
+	// new bog takes it: this differs from what was asked for one that
+	// already had a URL, which keeps its own
+	Access api.AccessMode `json:"access,omitempty"`
+	asked  api.AccessMode
 }
 
 func (d deployed) human(w io.Writer) {
@@ -61,6 +67,12 @@ func (d deployed) human(w io.Writer) {
 	}
 	if d.Grown != nil {
 		d.Grown.human(w)
+	}
+	switch {
+	case d.Access != d.asked:
+		fmt.Fprintf(w, "%s stays %s: --access is for a new bog. Change this one with `flop bog access %s %s`\n", d.Bog, d.Access, d.Bog, d.asked)
+	case d.Access == api.AccessPublic:
+		fmt.Fprintf(w, "%s is public: anyone can call it, any method, without a key\n", d.Bog)
 	}
 	if d.URL != "" {
 		fmt.Fprintf(w, "%s\n", d.URL)
@@ -79,6 +91,9 @@ func DeployBog(ctx context.Context, o *ui, opts deployOptions) (result, error) {
 	}
 	if opts.Arch != "" && opts.Arch != api.ArchARM64 && opts.Arch != api.ArchAMD64 {
 		return nil, usage("--arch is arm64 or amd64", "")
+	}
+	if opts.Access != "" && opts.Access != string(api.AccessPrivate) && opts.Access != string(api.AccessPublic) {
+		return nil, usage("--access is private or public", "")
 	}
 	arch := opts.Arch
 	if arch == "" && !opts.BuildOnly {
@@ -99,7 +114,7 @@ func DeployBog(ctx context.Context, o *ui, opts deployOptions) (result, error) {
 		name = bogSlug(b.Package)
 	}
 	started := time.Now()
-	d, created, err := deployImage(ctx, client, name, opts.Box, b.Image, opts.Size)
+	d, created, access, err := deployImageWithAccess(ctx, client, name, opts.Box, b.Image, opts.Size, api.AccessMode(opts.Access))
 	if err != nil {
 		return nil, err
 	}
@@ -113,7 +128,7 @@ func DeployBog(ctx context.Context, o *ui, opts deployOptions) (result, error) {
 	default:
 		o.say("Rolling %s out to generation %d on %s", d.Bog, d.Generation, box(d))
 	}
-	out := deployed{Bog: d.Bog, Created: created, Build: b, Deployment: d, URL: d.URL}
+	out := deployed{Bog: d.Bog, Created: created, Build: b, Deployment: d, URL: d.URL, Access: access, asked: api.AccessMode(opts.Access)}
 	if !opts.NoWait {
 		if out.Deployment, err = waitForDeployment(ctx, client, d.ID, d.Generation, started, 2*time.Second, opts.Timeout, o.err); err != nil {
 			return nil, err
@@ -249,6 +264,42 @@ func deployImage(ctx context.Context, client *Client, name, box, image string, s
 		return api.Deployment{}, false, sizeRefusal("create deployment", err)
 	}
 	return created, true, nil
+}
+
+// deployImageWithAccess is deployImage for a deploy that names who may call
+// the bog. A bog is new until it has a URL (its first deployment gives it
+// one; destroying its data takes it away), and only a new bog takes the
+// access named: one that exists keeps its mode, which is `flop bog access`'s
+// to change, so a routine deploy never opens a bog someone closed. It
+// returns the bog's mode after the deploy ("" when want names none).
+func deployImageWithAccess(ctx context.Context, client *Client, name, box, image string, size sizing, want api.AccessMode) (api.Deployment, bool, api.AccessMode, error) {
+	mode, isNew := api.AccessMode(""), false
+	if want != "" {
+		was, err := client.GetBogAccess(ctx, name)
+		var apiErr *APIError
+		switch {
+		case errors.As(err, &apiErr) && apiErr.Status == http.StatusNotFound:
+			mode, isNew = api.AccessPrivate, true
+		case err != nil:
+			return api.Deployment{}, false, "", fmt.Errorf("access: %w", err)
+		default:
+			mode = was.Mode
+		}
+	}
+	d, created, err := deployImage(ctx, client, name, box, image, size)
+	if err != nil {
+		return api.Deployment{}, false, "", err
+	}
+	if isNew && want == api.AccessPublic {
+		// the deployment is made, and private: say so if this fails
+		set, err := client.SetBogAccess(ctx, name, api.BogAccess{Mode: want})
+		if err != nil {
+			return api.Deployment{}, false, "", fail("failed", fmt.Sprintf("%s is deploying, but still private: making it public failed: %v", name, err),
+				fmt.Sprintf("run `flop bog access %s public`, then `flop bog wait %s`", name, name))
+		}
+		mode = set.Mode
+	}
+	return d, created, mode, nil
 }
 
 // waitForDeployment follows a deployment until its box reports generation gen

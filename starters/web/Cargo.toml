@@ -1,0 +1,21 @@
+[package]
+name = "bog-starter"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+# bog comes from its repository. Cargo.lock pins the commit: `cargo update -p bog` moves it.
+bog = { git = "https://github.com/flowercomputers/bog" }
+aide = { version = "0.15", features = ["axum", "axum-json", "axum-query", "axum-tokio"] }
+axum = { version = "0.8", default-features = false, features = ["http1", "json", "query", "tokio"] }
+schemars = "0.9"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal"] }
+
+[profile.release]
+strip = true
+
+# bog compiled as one unit: a little faster to run, for a few seconds of build
+[profile.release.package.bog]
+codegen-units = 1

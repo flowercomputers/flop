@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>bog-starter</title>
+    <link rel="icon" href="data:,">
+    <link rel="stylesheet" href="/style.css">
+  </head>
+  <body>
+    <main>
+      <h1>bog-starter</h1>
+      <output id="sum" aria-live="polite">&hellip;</output>
+      <form id="add">
+        <input name="amount" type="number" step="1" value="1" required aria-label="Amount">
+        <button>Add</button>
+      </form>
+      <p id="problem" role="alert" hidden></p>
+    </main>
+    <script src="/app.js"></script>
+  </body>
+</html>
